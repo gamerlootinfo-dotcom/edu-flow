@@ -14,7 +14,7 @@ interface ExamEngineProps {
   questions: Question[]
   durationMinutes: number
   startTime: number // unix ms stored in DB
-  initialAnswers: Record<string, string>
+  initialAnswers: Record<string, CorrectOption>
   isCompleted: boolean
 }
 
@@ -32,7 +32,7 @@ export default function ExamEngine({
   const totalSeconds = durationMinutes * 60
 
   // State
-  const [answers, setAnswers] = useState<Record<string, string>>(initialAnswers)
+  const [answers, setAnswers] = useState<Record<string, CorrectOption>>(initialAnswers)
   const [currentIdx, setCurrentIdx] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
@@ -114,7 +114,7 @@ export default function ExamEngine({
     return () => document.removeEventListener('fullscreenchange', handler)
   }, [])
 
-  const handleAnswer = (questionId: string, option: string) => {
+  const handleAnswer = (questionId: string, option: CorrectOption) => {
     setAnswers(prev => ({ ...prev, [questionId]: option }))
   }
 
