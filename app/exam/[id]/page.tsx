@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import ExamEngine from '@/components/exam/ExamEngine'
+import { CorrectOption } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,7 +56,7 @@ export default async function ExamPage({
     .single()
 
   let startTime: number
-  let initialAnswers: Record<string, string> = {}
+  let initialAnswers: Record<string, CorrectOption> = {}
   let isCompleted = false
 
   if (existingResult?.is_completed) {
