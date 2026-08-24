@@ -117,6 +117,7 @@ export default async function ResultPage({
         <ResultDetails
           questions={questions || []}
           studentAnswers={result.student_answers || {}}
+          pdfUrl={result.test?.pdf_url || undefined}
         />
       </div>
     </div>

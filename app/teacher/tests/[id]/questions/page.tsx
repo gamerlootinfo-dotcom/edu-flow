@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import QuestionManager from '@/components/teacher/QuestionManager'
+import PdfQuestionManager from '@/components/teacher/PdfQuestionManager'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,8 +38,12 @@ export default async function QuestionsPage({
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar user={profile} />
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <QuestionManager test={test} questions={questions || []} />
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {test.pdf_url ? (
+          <PdfQuestionManager test={test} questions={questions || []} />
+        ) : (
+          <QuestionManager test={test} questions={questions || []} />
+        )}
       </div>
     </div>
   )

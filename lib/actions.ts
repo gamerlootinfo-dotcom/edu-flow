@@ -294,6 +294,7 @@ export async function createTestAction(formData: FormData) {
       price: parseFloat(formData.get('price') as string) || 0,
       duration_minutes: parseInt(formData.get('duration_minutes') as string) || 90,
       description: formData.get('description') as string || null,
+      pdf_url: formData.get('pdf_url') as string || null,
     })
     .select('id')
     .single()
@@ -346,6 +347,45 @@ export async function addQuestionAction(formData: FormData) {
   return { success: true }
 }
 
+export async function savePdfAnswerKeyAction(testId: string, correctOptions: string[]) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  // Verify teacher owns the test
+  const { data: test } = await supabase
+    .from('tests')
+    .select('teacher_id')
+    .eq('id', testId)
+    .single()
+  if (!test || test.teacher_id !== user.id) return { error: 'Unauthorized' }
+
+  // Delete existing questions
+  await supabase.from('questions').delete().eq('test_id', testId)
+
+  // Re-insert all questions with placeholder text and correct options
+  const rows = correctOptions.map((correct_option, idx) => ({
+    test_id: testId,
+    order_number: idx + 1,
+    question_text: null,
+    question_image_url: null,
+    option_a: 'A',
+    option_b: 'B',
+    option_c: 'C',
+    option_d: 'D',
+    option_e: 'E',
+    correct_option,
+    explanation_text: null,
+    explanation_image_url: null,
+  }))
+
+  const { error } = await supabase.from('questions').insert(rows)
+  if (error) return { error: error.message }
+
+  revalidatePath(`/teacher/tests/${testId}/questions`)
+  return { success: true }
+}
+
 export async function submitTestForApprovalAction(testId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -365,6 +405,7 @@ export async function submitTestForApprovalAction(testId: string) {
   revalidatePath('/admin/tests')
   return { success: true }
 }
+
 
 export async function createWithdrawalRequestAction(formData: FormData) {
   const supabase = await createClient()

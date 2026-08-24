@@ -32,6 +32,7 @@ export interface Test {
   is_approved: boolean
   is_active: boolean
   description?: string
+  pdf_url?: string
   created_at: string
   updated_at: string
   // Joined

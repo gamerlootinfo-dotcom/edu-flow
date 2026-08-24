@@ -2,135 +2,151 @@
 
 import { useState } from 'react'
 import { Question } from '@/lib/types'
-import { Check, X, Minus, ChevronDown, ChevronUp, Image as ImageIcon } from 'lucide-react'
+import { Check, X, Minus, FileText, ExternalLink } from 'lucide-react'
 
 interface Props {
   questions: Question[]
   studentAnswers: Record<string, string>
+  pdfUrl?: string
 }
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E'] as const
 
-export default function ResultDetails({ questions, studentAnswers }: Props) {
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+export default function ResultDetails({ questions, studentAnswers, pdfUrl }: Props) {
+  const [mobileTab, setMobileTab] = useState<'pdf' | 'results'>('results')
 
-  return (
-    <div className="space-y-3">
-      <h2 className="font-semibold text-gray-900 mb-4">Sualların Təhlili</h2>
+  const ResultsList = () => (
+    <div className="space-y-2">
       {questions.map((q, idx) => {
         const studentAnswer = studentAnswers[q.id]
         const isCorrect = studentAnswer === q.correct_option
         const isBlank = !studentAnswer
-        const isExpanded = expandedId === q.id
 
-        const statusIcon = isBlank ? <Minus className="w-4 h-4 text-gray-400" />
-          : isCorrect ? <Check className="w-4 h-4 text-green-600" />
+        const statusIcon = isBlank
+          ? <Minus className="w-4 h-4 text-gray-400" />
+          : isCorrect
+          ? <Check className="w-4 h-4 text-green-600" />
           : <X className="w-4 h-4 text-red-600" />
 
-        const statusBg = isBlank ? 'bg-gray-50 border-gray-100'
-          : isCorrect ? 'bg-green-50 border-green-100'
+        const rowBg = isBlank
+          ? 'bg-gray-50 border-gray-100'
+          : isCorrect
+          ? 'bg-green-50 border-green-100'
           : 'bg-red-50 border-red-100'
 
-        const options: Record<string, string> = {
-          A: q.option_a,
-          B: q.option_b,
-          C: q.option_c,
-          D: q.option_d,
-          E: q.option_e,
-        }
-
         return (
-          <div
-            key={q.id}
-            className={`rounded-xl border ${statusBg} overflow-hidden`}
-          >
-            <button
-              onClick={() => setExpandedId(isExpanded ? null : q.id)}
-              className="w-full flex items-center gap-3 p-4 text-left hover:opacity-90 transition-opacity"
-            >
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                isBlank ? 'bg-gray-200' : isCorrect ? 'bg-green-100' : 'bg-red-100'
-              }`}>
+          <div key={q.id} className={`rounded-xl border ${rowBg} p-3`}>
+            <div className="flex items-center gap-3">
+              {/* Status icon */}
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isBlank ? 'bg-gray-200' : isCorrect ? 'bg-green-100' : 'bg-red-100'}`}>
                 {statusIcon}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700">{idx + 1}. sual</span>
-                  {studentAnswer && (
-                    <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${
-                      isCorrect ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'
-                    }`}>
-                      {studentAnswer}
-                    </span>
-                  )}
-                  {!isBlank && !isCorrect && (
-                    <span className="text-xs px-1.5 py-0.5 rounded font-semibold bg-green-200 text-green-800">
-                      ✓ {q.correct_option}
-                    </span>
-                  )}
-                </div>
-                {q.question_text && (
-                  <p className="text-xs text-gray-500 truncate mt-0.5">{q.question_text}</p>
-                )}
-                {q.question_image_url && !q.question_text && (
-                  <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                    <ImageIcon className="w-3 h-3" /> Şəkilli sual
-                  </p>
-                )}
-              </div>
-              {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />}
-            </button>
 
-            {isExpanded && (
-              <div className="px-4 pb-4 pt-0 border-t border-current border-opacity-10">
-                {/* Question image */}
-                {q.question_image_url && (
-                  <img src={q.question_image_url} alt="Sual" className="max-w-full rounded-lg mb-3 border border-gray-200" />
-                )}
-                {q.question_text && (
-                  <p className="text-sm text-gray-700 mb-3 leading-relaxed">{q.question_text}</p>
-                )}
+              {/* Question number */}
+              <span className="text-sm font-semibold text-gray-700 w-12 flex-shrink-0">{idx + 1}. sual</span>
 
-                {/* Options */}
-                <div className="space-y-2 mb-4">
-                  {OPTION_LABELS.map(opt => (
-                    <div
+              {/* Bubbles */}
+              <div className="flex gap-1 flex-wrap">
+                {OPTION_LABELS.map(opt => {
+                  const isStudentChoice = opt === studentAnswer
+                  const isCorrectOpt = opt === q.correct_option
+                  return (
+                    <span
                       key={opt}
-                      className={`flex items-start gap-2 p-2.5 rounded-lg text-sm ${
-                        opt === q.correct_option
-                          ? 'bg-green-100 text-green-800 font-medium'
-                          : opt === studentAnswer && !isCorrect
-                          ? 'bg-red-100 text-red-700 line-through'
-                          : 'text-gray-600'
+                      className={`w-8 h-8 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 ${
+                        isCorrectOpt
+                          ? 'bg-green-500 text-white'
+                          : isStudentChoice && !isCorrect
+                          ? 'bg-red-400 text-white'
+                          : 'bg-white border border-gray-200 text-gray-400'
                       }`}
                     >
-                      <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                        opt === q.correct_option ? 'bg-green-500 text-white'
-                        : opt === studentAnswer ? 'bg-red-400 text-white'
-                        : 'bg-gray-200 text-gray-600'
-                      }`}>{opt}</span>
-                      {options[opt]}
-                    </div>
-                  ))}
-                </div>
+                      {opt}
+                    </span>
+                  )
+                })}
+              </div>
 
-                {/* Explanation */}
-                {(q.explanation_text || q.explanation_image_url) && (
-                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
-                    <p className="text-xs font-semibold text-blue-700 mb-2">💡 İzah</p>
-                    {q.explanation_image_url && (
-                      <img src={q.explanation_image_url} alt="İzah" className="max-w-full rounded-lg mb-2" />
-                    )}
-                    {q.explanation_text && (
-                      <p className="text-sm text-blue-800">{q.explanation_text}</p>
-                    )}
+              {/* Answer summary */}
+              <div className="ml-auto text-right text-xs flex-shrink-0">
+                {isBlank ? (
+                  <span className="text-gray-400">Boş</span>
+                ) : isCorrect ? (
+                  <span className="text-green-600 font-semibold">Düzgün</span>
+                ) : (
+                  <div>
+                    <span className="text-red-500 line-through mr-1">{studentAnswer}</span>
+                    <span className="text-green-600 font-semibold">→ {q.correct_option}</span>
                   </div>
                 )}
               </div>
-            )}
+            </div>
           </div>
         )
       })}
+    </div>
+  )
+
+  // ─── PDF MODE ─────────────────────────────────────────────────
+  if (pdfUrl) {
+    return (
+      <div>
+        <h2 className="font-semibold text-gray-900 mb-4">Sualların Təhlili</h2>
+
+        {/* Mobile Tabs */}
+        <div className="flex md:hidden border border-gray-200 rounded-xl overflow-hidden mb-4">
+          <button
+            onClick={() => setMobileTab('results')}
+            className={`flex-1 py-2.5 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors ${mobileTab === 'results' ? 'bg-blue-600 text-white' : 'text-gray-600 bg-white'}`}
+          >
+            <Check className="w-4 h-4" /> Nəticələr
+          </button>
+          <button
+            onClick={() => setMobileTab('pdf')}
+            className={`flex-1 py-2.5 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors ${mobileTab === 'pdf' ? 'bg-blue-600 text-white' : 'text-gray-600 bg-white'}`}
+          >
+            <FileText className="w-4 h-4" /> PDF
+          </button>
+        </div>
+
+        {/* Desktop: split / Mobile: tabs */}
+        <div className="flex flex-col md:flex-row gap-6">
+
+          {/* Results list */}
+          <div className={`flex-1 min-w-0 ${mobileTab === 'results' ? 'block' : 'hidden'} md:block`}>
+            <ResultsList />
+          </div>
+
+          {/* PDF Viewer */}
+          <div className={`w-full md:w-2/5 lg:w-1/2 flex-shrink-0 ${mobileTab === 'pdf' ? 'block' : 'hidden'} md:block`}>
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden sticky top-4">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                  <FileText className="w-3.5 h-3.5" /> Sınaq sənədi
+                </span>
+                <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                  <ExternalLink className="w-3 h-3" /> Yeni sekmədə aç
+                </a>
+              </div>
+              <iframe
+                src={`${pdfUrl}#toolbar=1&navpanes=0`}
+                className="w-full"
+                style={{ height: '70vh', minHeight: 400 }}
+                title="Sınaq PDF"
+              />
+            </div>
+          </div>
+
+        </div>
+      </div>
+    )
+  }
+
+  // ─── CLASSIC MODE ────────────────────────────────────────────
+  return (
+    <div className="space-y-3">
+      <h2 className="font-semibold text-gray-900 mb-4">Sualların Təhlili</h2>
+      <ResultsList />
     </div>
   )
 }

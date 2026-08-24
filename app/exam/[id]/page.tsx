@@ -95,6 +95,7 @@ export default async function ExamPage({
       startTime={startTime!}
       initialAnswers={initialAnswers}
       isCompleted={isCompleted}
+      pdfUrl={test.pdf_url || undefined}
     />
   )
 }
