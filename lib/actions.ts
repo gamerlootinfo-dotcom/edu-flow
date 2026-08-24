@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { connectDB } from '@/lib/mongodb'
+import { User, Test, Withdrawal, WalletTx, PlatformSettings } from '@/lib/models'
 
 // =============================================
 // AUTH ACTIONS
@@ -17,18 +19,16 @@ export async function loginAction(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) return { error: error.message }
 
-  // Get user role
+  // Get user role from MongoDB
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Auth failed' }
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
+  await connectDB()
+  const mongoUser = await User.findOne({ supabaseId: user.id }).lean()
+  if (!mongoUser) return { error: 'User profile not found in MongoDB' }
 
-  if (profile?.role === 'admin') redirect('/admin')
-  if (profile?.role === 'teacher') redirect('/teacher')
+  if (mongoUser.role === 'admin') redirect('/admin')
+  if (mongoUser.role === 'teacher') redirect('/teacher')
   redirect('/dashboard')
 }
 
@@ -43,18 +43,21 @@ export async function registerAction(formData: FormData) {
   if (error) return { error: error.message }
   if (!data.user) return { error: 'Registration failed' }
 
-  // Create user profile
-  const { error: profileError } = await supabase
-    .from('users')
-    .insert({
-      id: data.user.id,
+  // Create user profile in MongoDB
+  try {
+    await connectDB()
+    await User.create({
+      supabaseId: data.user.id,
       email,
       full_name: fullName,
       role: 'student',
       phone: phone || null,
+      balance: 0,
+      teacher_balance: 0,
     })
-
-  if (profileError) return { error: profileError.message }
+  } catch (profileError: any) {
+    return { error: profileError.message }
+  }
 
   redirect('/dashboard')
 }
@@ -62,6 +65,7 @@ export async function registerAction(formData: FormData) {
 export async function logoutAction() {
   const supabase = await createClient()
   await supabase.auth.signOut()
+
   redirect('/auth/login')
 }
 
@@ -448,7 +452,7 @@ export async function createTeacherAction(formData: FormData) {
   const fullName = formData.get('full_name') as string
   const password = formData.get('password') as string
 
-  // Create auth user
+  // Create auth user in Supabase (auth still handled by Supabase)
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
@@ -458,60 +462,62 @@ export async function createTeacherAction(formData: FormData) {
   if (error) return { error: error.message }
   if (!data.user) return { error: 'User creation failed' }
 
-  // Create profile
-  const { error: profileError } = await supabaseAdmin
-    .from('users')
-    .insert({
-      id: data.user.id,
+  // Create profile in MongoDB
+  try {
+    await connectDB()
+    await User.create({
+      supabaseId: data.user.id,
       email,
       full_name: fullName,
       role: 'teacher',
+      balance: 0,
+      teacher_balance: 0,
     })
-
-  if (profileError) return { error: profileError.message }
+  } catch (err: any) {
+    return { error: err.message }
+  }
 
   revalidatePath('/admin/teachers')
   return { success: true }
 }
 
 export async function approveTestAction(testId: string) {
-  const supabase = await createClient()
-
-  const { error } = await supabase
-    .from('tests')
-    .update({ is_approved: true })
-    .eq('id', testId)
-
-  if (error) return { error: error.message }
+  try {
+    await connectDB()
+    await Test.findByIdAndUpdate(testId, { is_approved: true })
+  } catch (err: any) {
+    return { error: err.message }
+  }
 
   revalidatePath('/admin/tests')
   return { success: true }
 }
 
 export async function rejectTestAction(testId: string) {
-  const supabase = await createClient()
-
-  const { error } = await supabase
-    .from('tests')
-    .update({ is_approved: false, is_active: false })
-    .eq('id', testId)
-
-  if (error) return { error: error.message }
+  try {
+    await connectDB()
+    await Test.findByIdAndUpdate(testId, { is_approved: false, is_active: false })
+  } catch (err: any) {
+    return { error: err.message }
+  }
 
   revalidatePath('/admin/tests')
   return { success: true }
 }
 
 export async function updateCommissionAction(formData: FormData) {
-  const supabase = await createClient()
   const rate = formData.get('commission_rate') as string
 
-  const { error } = await supabase
-    .from('platform_settings')
-    .update({ value: rate })
-    .eq('key', 'commission_rate')
-
-  if (error) return { error: error.message }
+  try {
+    await connectDB()
+    await PlatformSettings.findOneAndUpdate(
+      { key: 'commission_rate' },
+      { value: rate, updated_at: new Date() },
+      { upsert: true }
+    )
+  } catch (err: any) {
+    return { error: err.message }
+  }
 
   revalidatePath('/admin')
   return { success: true }
@@ -522,44 +528,37 @@ export async function processWithdrawalAction(
   status: 'completed' | 'rejected',
   note?: string
 ) {
-  const supabase = await createClient()
+  try {
+    await connectDB()
 
-  const { data: withdrawal } = await supabase
-    .from('withdrawal_requests')
-    .select('teacher_id, amount, status')
-    .eq('id', withdrawalId)
-    .single()
+    const withdrawal = await Withdrawal.findById(withdrawalId).lean()
+    if (!withdrawal || withdrawal.status !== 'pending') {
+      return { error: 'Invalid withdrawal request' }
+    }
 
-  if (!withdrawal || withdrawal.status !== 'pending') {
-    return { error: 'Invalid withdrawal request' }
-  }
-
-  const { error } = await supabase
-    .from('withdrawal_requests')
-    .update({ status, admin_note: note, processed_at: new Date().toISOString() })
-    .eq('id', withdrawalId)
-
-  if (error) return { error: error.message }
-
-  // If completed → deduct from teacher balance
-  if (status === 'completed') {
-    const { data: teacher } = await supabase
-      .from('users')
-      .select('teacher_balance')
-      .eq('id', withdrawal.teacher_id)
-      .single()
-
-    await supabase
-      .from('users')
-      .update({ teacher_balance: Math.max(0, (teacher?.teacher_balance || 0) - withdrawal.amount) })
-      .eq('id', withdrawal.teacher_id)
-
-    await supabase.from('wallet_transactions').insert({
-      user_id: withdrawal.teacher_id,
-      type: 'withdrawal',
-      amount: -withdrawal.amount,
-      description: 'Pul çıxarışı tamamlandı',
+    await Withdrawal.findByIdAndUpdate(withdrawalId, {
+      status,
+      admin_note: note,
+      processed_at: new Date(),
     })
+
+    // If completed → deduct from teacher balance
+    if (status === 'completed') {
+      const teacher = await User.findById(withdrawal.teacher_id)
+      if (teacher) {
+        teacher.teacher_balance = Math.max(0, (teacher.teacher_balance || 0) - withdrawal.amount)
+        await teacher.save()
+
+        await WalletTx.create({
+          user_id: withdrawal.teacher_id,
+          type: 'withdrawal',
+          amount: -withdrawal.amount,
+          description: 'Pul çıxarışı tamamlandı',
+        })
+      }
+    }
+  } catch (err: any) {
+    return { error: err.message }
   }
 
   revalidatePath('/admin/withdrawals')

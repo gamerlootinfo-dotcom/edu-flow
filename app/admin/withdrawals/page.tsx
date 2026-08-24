@@ -2,7 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import AdminWithdrawalList from '@/components/admin/AdminWithdrawalList'
-import { formatAZN } from '@/lib/finance'
+import { connectDB } from '@/lib/mongodb'
+import { User, Withdrawal } from '@/lib/models'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,16 +12,43 @@ export default async function AdminWithdrawalsPage() {
   const { data: { user: authUser } } = await supabase.auth.getUser()
   if (!authUser) redirect('/auth/login')
 
-  const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
-  if (!profile || profile.role !== 'admin') redirect('/')
+  await connectDB()
 
-  const { data: withdrawals } = await supabase
-    .from('withdrawal_requests')
-    .select('*, teacher:users!teacher_id(full_name, email)')
-    .order('requested_at', { ascending: false })
+  const mongoUser = await User.findOne({ supabaseId: authUser.id }).lean()
+  if (!mongoUser || mongoUser.role !== 'admin') redirect('/')
 
-  const pending = withdrawals?.filter(w => w.status === 'pending') || []
-  const done = withdrawals?.filter(w => w.status !== 'pending') || []
+  const withdrawals = await Withdrawal.find({})
+    .populate('teacher_id', 'full_name email')
+    .sort({ requested_at: -1 })
+    .lean()
+
+  // Normalize for client component
+  const normalized = withdrawals.map(w => {
+    const teacher = w.teacher_id as any
+    return {
+      id: String(w._id),
+      teacher_id: String(teacher?._id || w.teacher_id),
+      amount: w.amount,
+      card_number: w.card_number,
+      card_holder_name: w.card_holder_name,
+      status: w.status,
+      admin_note: w.admin_note,
+      requested_at: w.requested_at?.toISOString() || '',
+      processed_at: w.processed_at?.toISOString(),
+      teacher: teacher ? { full_name: teacher.full_name, email: teacher.email } : undefined,
+    }
+  })
+
+  const pending = normalized.filter(w => w.status === 'pending')
+  const done = normalized.filter(w => w.status !== 'pending')
+
+  const profile = {
+    id: authUser.id,
+    email: mongoUser.email,
+    full_name: mongoUser.full_name,
+    role: mongoUser.role,
+    balance: mongoUser.balance,
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -44,3 +72,4 @@ export default async function AdminWithdrawalsPage() {
     </div>
   )
 }
+

@@ -4,6 +4,8 @@ import Navbar from '@/components/Navbar'
 import { formatAZN } from '@/lib/finance'
 import { Users, BookOpen, ShoppingBag, TrendingUp, Clock, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
+import { connectDB } from '@/lib/mongodb'
+import { User, Test, Purchase, Withdrawal, PlatformSettings } from '@/lib/models'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,35 +14,45 @@ export default async function AdminDashboardPage() {
   const { data: { user: authUser } } = await supabase.auth.getUser()
   if (!authUser) redirect('/auth/login')
 
-  const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
-  if (!profile || profile.role !== 'admin') redirect('/')
+  await connectDB()
 
-  // Stats queries
+  const mongoUser = await User.findOne({ supabaseId: authUser.id }).lean()
+  if (!mongoUser || mongoUser.role !== 'admin') redirect('/')
+
   const [
-    { count: totalUsers },
-    { count: totalStudents },
-    { count: totalTeachers },
-    { count: totalTests },
-    { count: pendingTests },
-    { count: totalPurchases },
-    { data: purchases },
-    { count: pendingWithdrawals },
+    totalUsers,
+    totalStudents,
+    totalTeachers,
+    totalTests,
+    pendingTests,
+    totalPurchases,
+    purchases,
+    pendingWithdrawals,
+    settings,
   ] = await Promise.all([
-    supabase.from('users').select('*', { count: 'exact', head: true }),
-    supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'student'),
-    supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'teacher'),
-    supabase.from('tests').select('*', { count: 'exact', head: true }),
-    supabase.from('tests').select('*', { count: 'exact', head: true }).eq('is_approved', false),
-    supabase.from('purchases').select('*', { count: 'exact', head: true }),
-    supabase.from('purchases').select('platform_cut'),
-    supabase.from('withdrawal_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+    User.countDocuments(),
+    User.countDocuments({ role: 'student' }),
+    User.countDocuments({ role: 'teacher' }),
+    Test.countDocuments(),
+    Test.countDocuments({ is_approved: false }),
+    Purchase.countDocuments(),
+    Purchase.find({}, 'platform_cut').lean(),
+    Withdrawal.countDocuments({ status: 'pending' }),
+    PlatformSettings.findOne({ key: 'commission_rate' }).lean(),
   ])
 
-  const totalRevenue = purchases?.reduce((a, p) => a + p.platform_cut, 0) || 0
-
-  const { data: settings } = await supabase
-    .from('platform_settings').select('value').eq('key', 'commission_rate').single()
+  const totalRevenue = purchases.reduce((a, p) => a + p.platform_cut, 0)
   const commissionRate = settings?.value || '20'
+
+  // Build profile object for Navbar
+  const profile = {
+    id: authUser.id,
+    email: mongoUser.email,
+    full_name: mongoUser.full_name,
+    role: mongoUser.role,
+    balance: mongoUser.balance,
+    teacher_balance: mongoUser.teacher_balance,
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -54,15 +66,15 @@ export default async function AdminDashboardPage() {
         </div>
 
         {/* Alerts */}
-        {((pendingTests || 0) > 0 || (pendingWithdrawals || 0) > 0) && (
+        {(pendingTests > 0 || pendingWithdrawals > 0) && (
           <div className="flex flex-wrap gap-3 mb-6">
-            {(pendingTests || 0) > 0 && (
+            {pendingTests > 0 && (
               <Link href="/admin/tests" className="flex items-center gap-2 bg-orange-50 text-orange-700 border border-orange-200 px-4 py-2.5 rounded-xl text-sm hover:bg-orange-100 transition-colors">
                 <AlertCircle className="w-4 h-4" />
                 {pendingTests} sınaq təsdiq gözləyir
               </Link>
             )}
-            {(pendingWithdrawals || 0) > 0 && (
+            {pendingWithdrawals > 0 && (
               <Link href="/admin/withdrawals" className="flex items-center gap-2 bg-red-50 text-red-700 border border-red-200 px-4 py-2.5 rounded-xl text-sm hover:bg-red-100 transition-colors">
                 <AlertCircle className="w-4 h-4" />
                 {pendingWithdrawals} çıxarış sorğusu gözləyir
@@ -84,21 +96,21 @@ export default async function AdminDashboardPage() {
             <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center mb-3">
               <Users className="w-5 h-5 text-blue-600" />
             </div>
-            <div className="text-xl font-bold text-gray-900">{totalUsers || 0}</div>
+            <div className="text-xl font-bold text-gray-900">{totalUsers}</div>
             <div className="text-xs text-gray-500 mt-1">{totalStudents} şagird · {totalTeachers} müəllim</div>
           </div>
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
             <div className="w-9 h-9 bg-purple-50 rounded-xl flex items-center justify-center mb-3">
               <BookOpen className="w-5 h-5 text-purple-600" />
             </div>
-            <div className="text-xl font-bold text-gray-900">{totalTests || 0}</div>
+            <div className="text-xl font-bold text-gray-900">{totalTests}</div>
             <div className="text-xs text-gray-500 mt-1">Ümumi sınaq</div>
           </div>
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
             <div className="w-9 h-9 bg-orange-50 rounded-xl flex items-center justify-center mb-3">
               <ShoppingBag className="w-5 h-5 text-orange-500" />
             </div>
-            <div className="text-xl font-bold text-gray-900">{totalPurchases || 0}</div>
+            <div className="text-xl font-bold text-gray-900">{totalPurchases}</div>
             <div className="text-xs text-gray-500 mt-1">Ümumi satış</div>
           </div>
         </div>
